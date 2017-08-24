@@ -152,7 +152,7 @@ public class MainActivity extends AppCompatActivity {
     }
 
     @Override public void onBeginOfSpeech() {
-      //Toast.makeText(MainActivity.this, "开启语音", Toast.LENGTH_SHORT).show();
+      Toast.makeText(MainActivity.this, "开启语音", Toast.LENGTH_SHORT).show();
     }
 
     @Override public void onEndOfSpeech() {
