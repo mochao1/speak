@@ -1,26 +1,25 @@
 package com.sc.control.control;
 
-import android.content.Context;
 import android.content.Intent;
+import android.content.pm.PackageInfo;
+import android.content.pm.PackageManager;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
-import android.location.Location;
-import android.location.LocationListener;
-import android.location.LocationManager;
+import android.hardware.Sensor;
+import android.hardware.SensorEvent;
+import android.hardware.SensorEventListener;
+import android.hardware.SensorManager;
 import android.media.MediaPlayer;
-import android.net.Uri;
 import android.os.Bundle;
 import android.os.Environment;
-import android.provider.Settings;
 import android.support.v7.app.AppCompatActivity;
-import android.telephony.TelephonyManager;
 import android.util.Base64;
-import android.util.Log;
 import android.view.KeyEvent;
 import android.view.View;
 import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.ListView;
+import android.widget.TextView;
 import android.widget.Toast;
 import butterknife.BindView;
 import butterknife.ButterKnife;
@@ -37,20 +36,28 @@ import com.zhy.http.okhttp.callback.StringCallback;
 import java.io.ByteArrayInputStream;
 import java.io.File;
 import java.io.IOException;
+import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.UUID;
 import okhttp3.Call;
 import org.json.JSONException;
 import org.json.JSONObject;
+import utils.ExitUtils;
+import utils.HttpUrl;
+import utils.JsonParser;
+import utils.LocalUtil;
+import utils.SharePreUtil;
+import utils.User;
 
-public class MainActivity extends AppCompatActivity {
+public class MainActivity extends AppCompatActivity implements SensorEventListener {
 
   @BindView(R.id.mic) ImageView mic;
   @BindView(R.id.bottom) LinearLayout bottom;
   @BindView(R.id.list_content) ListView listContent;
+  @BindView(R.id.sensor_content) LinearLayout sensorContent;
+  @BindView(R.id.hide) TextView hide;
   // 语音听写对象
   private SpeechRecognizer mIat;
   // 引擎类型
@@ -66,6 +73,13 @@ public class MainActivity extends AppCompatActivity {
   boolean b = true;
   private String phoneNum;
   public static int SET_CODE = 0x00a1;
+  private boolean mRegisteredSensor;
+  private SensorManager mSensorManager;
+  private float x, y, z;
+  List<Sensor> sensors;
+  List<Sensor> Has;
+  List<TextView> contents;
+  TextView lat;
 
   @Override protected void onCreate(Bundle savedInstanceState) {
     super.onCreate(savedInstanceState);
@@ -74,15 +88,55 @@ public class MainActivity extends AppCompatActivity {
     ButterKnife.bind(this);
     SpeechUtility.createUtility(this, SpeechConstant.APPID + "=59424edc");
     initSpeak();
+    initSensor();
     initList();
   }
 
+  private void initSensor() {
+    sensors = new ArrayList<>();
+    contents = new ArrayList<>();
+    Has = new ArrayList<>();
+    mSensorManager = (SensorManager) getSystemService(SENSOR_SERVICE);
+    sensors.add(mSensorManager.getDefaultSensor(Sensor.TYPE_GYROSCOPE));
+    sensors.add(mSensorManager.getDefaultSensor(Sensor.TYPE_AMBIENT_TEMPERATURE));
+    sensors.add(mSensorManager.getDefaultSensor(Sensor.TYPE_ACCELEROMETER));
+    sensors.add(mSensorManager.getDefaultSensor(Sensor.TYPE_ORIENTATION));
+    sensors.add(mSensorManager.getDefaultSensor(Sensor.TYPE_GRAVITY));
+    for (int i = 0; i < sensors.size(); i++) {
+      if (sensors.get(i) != null) {
+        mSensorManager.registerListener(this, sensors.get(i), SensorManager.SENSOR_DELAY_NORMAL);
+        Has.add(sensors.get(i));
+        TextView tv = new TextView(this);
+        contents.add(tv);
+        sensorContent.addView(tv);
+      }
+    }
+    PackageManager pack = getPackageManager();
+    String version = null;
+    try {
+      PackageInfo info = pack.getPackageInfo(this.getPackageName(), 0);
+      version = info.versionName;
+    } catch (PackageManager.NameNotFoundException e) {
+      e.printStackTrace();
+    }
+    TextView tv1 = new TextView(this);
+    tv1.setText("手机识别码:\n" + StartActivity.getUniquePsuedoID());
+    sensorContent.addView(tv1);
+    TextView tv2 = new TextView(this);
+    tv2.setText("手机版本号:\n" + version);
+    sensorContent.addView(tv2);
+    TextView tv3 = new TextView(this);
+    tv3.setText("当前经纬度:\n" + LocalUtil.getLoc(this));
+    sensorContent.addView(tv3);
+    lat = tv3;
+  }
+
   private void initList() {
+    words = new ArrayList<>();
+    imgs = new ArrayList<>();
     User user = SharePreUtil.getObject("msp", this, "user", User.class);
     //TelephonyManager tm = (TelephonyManager) getSystemService(Context.TELEPHONY_SERVICE);
     //phoneNum = tm.getLine1Number();//获取本机号码
-    words = new ArrayList<>();
-    imgs = new ArrayList<>();
     if (user != null) {
       byte[] byteArray = Base64.decode(user.getImg(), Base64.DEFAULT);
       ByteArrayInputStream byteArrayInputStream = new ByteArrayInputStream(byteArray);
@@ -93,8 +147,6 @@ public class MainActivity extends AppCompatActivity {
     }
     imgs.add(BitmapFactory.decodeResource(getResources(), R.mipmap.smill));
     words.add("m" + getResources().getString(R.string.hello));
-    words.add(
-        "m" + "当前经纬度：" + LocalUtil.getLoc(this) + "\n识别码:" + StartActivity.getUniquePsuedoID());
     adapter = new ContentAdapter(words, imgs, this);
     listContent.setAdapter(adapter);
     mIat.startListening(mRecListener);
@@ -152,7 +204,7 @@ public class MainActivity extends AppCompatActivity {
     }
 
     @Override public void onBeginOfSpeech() {
-      Toast.makeText(MainActivity.this, "开启语音", Toast.LENGTH_SHORT).show();
+      //Toast.makeText(MainActivity.this, "开启语音", Toast.LENGTH_SHORT).show();
     }
 
     @Override public void onEndOfSpeech() {
@@ -167,8 +219,8 @@ public class MainActivity extends AppCompatActivity {
 
     @Override public void onError(SpeechError speechError) {
       if (b) {
-        mIat.startListening(mRecListener);
         Toast.makeText(MainActivity.this, "可以语音", Toast.LENGTH_SHORT).show();
+        mIat.startListening(mRecListener);
       }
     }
 
@@ -177,7 +229,7 @@ public class MainActivity extends AppCompatActivity {
     }
   };
 
-  @OnClick({ R.id.set, R.id.mic }) public void onViewClicked(View view) {
+  @OnClick({ R.id.set, R.id.mic, R.id.hide }) public void onViewClicked(View view) {
     switch (view.getId()) {
       case R.id.set:
         b = false;
@@ -187,6 +239,16 @@ public class MainActivity extends AppCompatActivity {
       case R.id.mic:
         switchSpeak();
         listContent.invalidateViews();
+        break;
+      case R.id.hide:
+        if (sensorContent.getVisibility() == View.VISIBLE) {
+          sensorContent.setVisibility(View.GONE);
+          hide.setText(getResources().getString(R.string.open));
+        } else {
+          sensorContent.setVisibility(View.VISIBLE);
+          hide.setText(getResources().getString(R.string.hide));
+          lat.setText("当前经纬度:\n" + LocalUtil.getLoc(this));
+        }
         break;
     }
   }
@@ -312,10 +374,55 @@ public class MainActivity extends AppCompatActivity {
       // 退出时释放连接
       mIat.cancel();
       mIat.destroy();
-      if(player!=null){
+      if (player != null) {
         player.stop();
         player.release();
       }
     }
+    if (mRegisteredSensor) {
+      mSensorManager.unregisterListener(this);
+      mRegisteredSensor = false;
+    }
+  }
+
+  @Override public void onSensorChanged(SensorEvent sensorEvent) {
+    x = sensorEvent.values[0];
+    y = sensorEvent.values[1];
+    z = sensorEvent.values[2];
+    if (Has.size() > 0) {
+      for (int i = 0; i < Has.size(); i++) {
+        if (Has.get(i).getType() == sensorEvent.sensor.getType()
+            && sensorEvent.sensor.getType() == Sensor.TYPE_GYROSCOPE) {
+
+          contents.get(i).setText("当前手机三轴角速度:\nx=" + x + ",y=" + y + ",z=" + z);
+        }
+        if (Has.get(i).getType() == sensorEvent.sensor.getType()
+            && sensorEvent.sensor.getType() == Sensor.TYPE_ACCELEROMETER) {
+
+          contents.get(i).setText("当前手机三轴加速度:\nx=" + x + ",y=" + y + ",z=" + z);
+        }
+        if (Has.get(i).getType() == sensorEvent.sensor.getType()
+            && sensorEvent.sensor.getType() == Sensor.TYPE_ORIENTATION) {
+
+          contents.get(i).setText("当前手机方向:\nx=" + x + ",y=" + y + ",z=" + z);
+        }
+        if (Has.get(i).getType() == sensorEvent.sensor.getType()
+            && sensorEvent.sensor.getType() == Sensor.TYPE_AMBIENT_TEMPERATURE) {
+          float temperatureValue = sensorEvent.values[0];
+          BigDecimal bd = new BigDecimal(temperatureValue);
+          double temperature = bd.setScale(2, BigDecimal.ROUND_HALF_UP).doubleValue();
+          contents.get(i).setText("当前手机温度:\n" + temperature + "℃");
+        }
+        if (Has.get(i).getType() == sensorEvent.sensor.getType()
+            && sensorEvent.sensor.getType() == Sensor.TYPE_GRAVITY) {
+
+          contents.get(i).setText("当前手机重力:\nx=" + x + ",y=" + y + ",z=" + z);
+        }
+      }
+    }
+  }
+
+  @Override public void onAccuracyChanged(Sensor sensor, int i) {
+
   }
 }

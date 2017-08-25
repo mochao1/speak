@@ -1,4 +1,4 @@
-package com.sc.control.control;
+package utils;
 
 /**
  * Created by Messi.Mo on 2017/8/18 0018.

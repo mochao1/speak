@@ -1,4 +1,4 @@
-package com.sc.control.control;
+package utils;
 
 import android.content.Context;
 import android.content.SharedPreferences;

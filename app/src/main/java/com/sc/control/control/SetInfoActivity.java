@@ -3,9 +3,6 @@ package com.sc.control.control;
 import android.content.Intent;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
-import android.graphics.drawable.BitmapDrawable;
-import android.graphics.drawable.Drawable;
-import android.hardware.Camera;
 import android.net.Uri;
 import android.os.Bundle;
 import android.os.Environment;
@@ -26,6 +23,10 @@ import java.io.ByteArrayOutputStream;
 import java.io.File;
 import java.text.SimpleDateFormat;
 import java.util.Date;
+import utils.BitmapUtils;
+import utils.ExitUtils;
+import utils.SharePreUtil;
+import utils.User;
 
 import static android.provider.MediaStore.Files.FileColumns.MEDIA_TYPE_IMAGE;
 
@@ -142,7 +143,7 @@ public class SetInfoActivity extends AppCompatActivity {
     if (requestCode == CODE_TAKE_PHOTO) {
        if(intent!=null&&intent.hasExtra("data")){
          bitmap=intent.getParcelableExtra("data");
-         bitmap=BitmapUtils.createScaleBitmap(bitmap,headImg.getWidth(),headImg.getHeight(),1);
+         bitmap= BitmapUtils.createScaleBitmap(bitmap,headImg.getWidth(),headImg.getHeight(),1);
          headImg.setImageBitmap(bitmap);
 
        }

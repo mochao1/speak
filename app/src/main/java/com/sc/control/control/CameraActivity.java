@@ -86,9 +86,6 @@ public class CameraActivity extends AppCompatActivity implements SurfaceHolder.C
   private void initCamera() {
     parameters = camera.getParameters();
     parameters.setPictureFormat(PixelFormat.JPEG);
-    // parameters.setPictureSize(surfaceView.getWidth(),
-    // surfaceView.getHeight()); // 部分定制手机，无法正常识别该方法。
-    //parameters.setFlashMode(Parameters.FLASH_MODE_TORCH);
     parameters.setFocusMode(Camera.Parameters.FOCUS_MODE_CONTINUOUS_PICTURE);// 1连续对焦
     setDispaly(parameters, camera);
     camera.setParameters(parameters);

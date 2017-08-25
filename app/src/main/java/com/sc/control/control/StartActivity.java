@@ -1,11 +1,9 @@
 package com.sc.control.control;
 
 import android.Manifest;
-import android.content.Context;
 import android.content.Intent;
 import android.content.pm.PackageManager;
 import android.location.Location;
-import android.location.LocationManager;
 import android.os.Build;
 import android.os.Bundle;
 import android.os.Handler;
@@ -19,12 +17,13 @@ import android.widget.Toast;
 import butterknife.BindView;
 import butterknife.ButterKnife;
 import com.zhy.http.okhttp.OkHttpUtils;
-import com.zhy.http.okhttp.callback.StringCallback;
 import java.text.SimpleDateFormat;
 import java.util.Date;
-import java.util.List;
 import java.util.UUID;
-import okhttp3.Call;
+import utils.ExitUtils;
+import utils.HttpUrl;
+import utils.SharePreUtil;
+import utils.User;
 
 /**
  * Created by Messi.Mo on 2017/8/18 0018.

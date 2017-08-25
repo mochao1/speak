@@ -1,4 +1,4 @@
-package com.sc.control.control;
+package utils;
 
 import android.Manifest;
 import android.app.Activity;
