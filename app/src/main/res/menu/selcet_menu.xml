@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<menu xmlns:android="http://schemas.android.com/apk/res/android">
+  <item
+      android:id="@+id/phoneInfo"
+      android:title="@string/hide"/>
+
+  <item
+      android:id="@+id/httpInfo"
+      android:title="查看服务器信息"/>
+</menu>

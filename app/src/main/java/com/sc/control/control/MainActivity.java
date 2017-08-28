@@ -1,5 +1,7 @@
 package com.sc.control.control;
 
+import android.Manifest;
+import android.content.Context;
 import android.content.Intent;
 import android.content.pm.PackageInfo;
 import android.content.pm.PackageManager;
@@ -9,16 +11,22 @@ import android.hardware.Sensor;
 import android.hardware.SensorEvent;
 import android.hardware.SensorEventListener;
 import android.hardware.SensorManager;
+import android.location.Location;
+import android.location.LocationListener;
+import android.location.LocationManager;
 import android.media.MediaPlayer;
 import android.os.Bundle;
 import android.os.Environment;
+import android.support.v4.app.ActivityCompat;
 import android.support.v7.app.AppCompatActivity;
 import android.util.Base64;
 import android.view.KeyEvent;
+import android.view.MenuItem;
 import android.view.View;
 import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.ListView;
+import android.widget.PopupMenu;
 import android.widget.TextView;
 import android.widget.Toast;
 import butterknife.BindView;
@@ -51,7 +59,8 @@ import utils.LocalUtil;
 import utils.SharePreUtil;
 import utils.User;
 
-public class MainActivity extends AppCompatActivity implements SensorEventListener {
+public class MainActivity extends AppCompatActivity
+    implements SensorEventListener, LocationListener {
 
   @BindView(R.id.mic) ImageView mic;
   @BindView(R.id.bottom) LinearLayout bottom;
@@ -60,8 +69,6 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
   @BindView(R.id.hide) TextView hide;
   // 语音听写对象
   private SpeechRecognizer mIat;
-  // 引擎类型
-  private String mEngineType = SpeechConstant.TYPE_CLOUD;
   // 用HashMap存储听写结果
   private HashMap<String, String> mIatResults = new LinkedHashMap<String, String>();
   private long exitTime = 0;
@@ -69,25 +76,53 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
   List<Bitmap> imgs;
   ContentAdapter adapter;
   MediaPlayer player;
-  int count = 0;
+  int count, num;
   boolean b = true;
-  private String phoneNum;
+  //private String phoneNum;
   public static int SET_CODE = 0x00a1;
-  private boolean mRegisteredSensor;
   private SensorManager mSensorManager;
-  private float x, y, z;
   List<Sensor> sensors;
   List<Sensor> Has;
   List<TextView> contents;
   TextView lat;
-
+  private double latitude = 0.0;
+  private double longitude = 0.0;
+  private LocationManager locationManager;
+  PopupMenu popup;
+  String speak_err,answer_err,mp3_err;
   @Override protected void onCreate(Bundle savedInstanceState) {
     super.onCreate(savedInstanceState);
     ExitUtils.activities.add(this);
     setContentView(R.layout.activity_main);
     ButterKnife.bind(this);
     SpeechUtility.createUtility(this, SpeechConstant.APPID + "=59424edc");
+    popup=new PopupMenu(this,hide);
+    popup.getMenuInflater().inflate(R.menu.selcet_menu, popup.getMenu());
+    popup.setOnMenuItemClickListener(new PopupMenu.OnMenuItemClickListener() {
+      @Override public boolean onMenuItemClick(MenuItem menuItem) {
+        switch (menuItem.getItemId()){
+          case R.id.phoneInfo:
+            if (sensorContent.getVisibility() == View.VISIBLE) {
+              sensorContent.setVisibility(View.GONE);
+              menuItem.setTitle(getResources().getString(R.string.open));
+            } else {
+              sensorContent.setVisibility(View.VISIBLE);
+              menuItem.setTitle(getResources().getString(R.string.hide));
+            }
+            break;
+          case R.id.httpInfo:
+            Intent intent=new Intent(MainActivity.this,HttpContentActivity.class);
+            intent.putExtra("xf",speak_err);
+            intent.putExtra("mimi",answer_err);
+            intent.putExtra("tts",mp3_err);
+            startActivity(intent);
+            break;
+        }
+        return false;
+      }
+    });
     initSpeak();
+    getLoc(this);
     initSensor();
     initList();
   }
@@ -102,6 +137,10 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
     sensors.add(mSensorManager.getDefaultSensor(Sensor.TYPE_ACCELEROMETER));
     sensors.add(mSensorManager.getDefaultSensor(Sensor.TYPE_ORIENTATION));
     sensors.add(mSensorManager.getDefaultSensor(Sensor.TYPE_GRAVITY));
+    sensors.add(mSensorManager.getDefaultSensor(Sensor.TYPE_PRESSURE));
+    sensors.add(mSensorManager.getDefaultSensor(Sensor.TYPE_RELATIVE_HUMIDITY));
+    sensors.add(mSensorManager.getDefaultSensor(Sensor.TYPE_MAGNETIC_FIELD));
+    sensors.add(mSensorManager.getDefaultSensor(Sensor.TYPE_LIGHT));
     for (int i = 0; i < sensors.size(); i++) {
       if (sensors.get(i) != null) {
         mSensorManager.registerListener(this, sensors.get(i), SensorManager.SENSOR_DELAY_NORMAL);
@@ -126,7 +165,7 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
     tv2.setText("手机版本号:\n" + version);
     sensorContent.addView(tv2);
     TextView tv3 = new TextView(this);
-    tv3.setText("当前经纬度:\n" + LocalUtil.getLoc(this));
+    tv3.setText("当前经纬度:\n" + longitude + "," + latitude);
     sensorContent.addView(tv3);
     lat = tv3;
   }
@@ -158,7 +197,7 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
     mIat.setParameter(SpeechConstant.DOMAIN, "iat");
     mIat.setParameter(SpeechConstant.ACCENT, "mandarin");
     // 设置听写引擎
-    mIat.setParameter(SpeechConstant.ENGINE_TYPE, mEngineType);
+    mIat.setParameter(SpeechConstant.ENGINE_TYPE, SpeechConstant.TYPE_CLOUD);
     // 设置返回结果格式
     mIat.setParameter(SpeechConstant.RESULT_TYPE, "json");
     // 设置语音前端点:静音超时时间，即用户多长时间不说话则当做超时处理
@@ -209,7 +248,7 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
 
     @Override public void onEndOfSpeech() {
       //Toast.makeText(MainActivity.this, "结束语音，等待回答", Toast.LENGTH_SHORT).show();
-      mIat.stopListening();
+      //mIat.stopListening();
     }
 
     @Override public void onResult(RecognizerResult recognizerResult, boolean b) {
@@ -222,6 +261,7 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
         Toast.makeText(MainActivity.this, "可以语音", Toast.LENGTH_SHORT).show();
         mIat.startListening(mRecListener);
       }
+      speak_err=speechError.toString();
     }
 
     @Override public void onEvent(int i, int i1, int i2, Bundle bundle) {
@@ -241,14 +281,7 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
         listContent.invalidateViews();
         break;
       case R.id.hide:
-        if (sensorContent.getVisibility() == View.VISIBLE) {
-          sensorContent.setVisibility(View.GONE);
-          hide.setText(getResources().getString(R.string.open));
-        } else {
-          sensorContent.setVisibility(View.VISIBLE);
-          hide.setText(getResources().getString(R.string.hide));
-          lat.setText("当前经纬度:\n" + LocalUtil.getLoc(this));
-        }
+        popup.show();
         break;
     }
   }
@@ -278,14 +311,17 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
         .build()
         .execute(new StringCallback() {
           @Override public void onError(Call call, Exception e, int id) {
-            speakWord("连接网络超时！");
+            //speakWord("连接网络超时！");
+            Toast.makeText(MainActivity.this,"连接网络超时!",Toast.LENGTH_SHORT).show();
+            answer_err="访问mimi.php出问题了："+e.toString();
           }
 
           @Override public void onResponse(String response, int id) {
+            answer_err="mimi.php返回的信息："+response;
             String result = response.trim();
             String lastWord = result.substring(result.lastIndexOf(">") + 1).trim();
             if (lastWord.equals("")) {
-              String str = "咪咪能力有限，问点简单的吧！";
+              String str = "这么简单的问题不要问我！";
               speakWord(str);
             } else {
               speakWord(lastWord);
@@ -315,10 +351,11 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
         .execute(new FileCallBack(Environment.getExternalStorageDirectory().getAbsolutePath(),
             "answer.mp3") {
           @Override public void onError(Call call, Exception e, int id) {
-            words.add("m" + e);
+            mp3_err="tts.php访问错误:"+e.toString();
           }
 
           @Override public void onResponse(File response, int id) {
+            mp3_err="下载的MP3地址："+response.getAbsolutePath();
             try {
               player.reset();
               player.setDataSource(response.getAbsolutePath());
@@ -346,6 +383,7 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
       Toast.makeText(getApplicationContext(), "再按一次退出程序", Toast.LENGTH_SHORT).show();
       exitTime = System.currentTimeMillis();
     } else {
+      sendData();
       ExitUtils.finishAll();
       System.exit(0);
     }
@@ -379,27 +417,41 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
         player.release();
       }
     }
-    if (mRegisteredSensor) {
-      mSensorManager.unregisterListener(this);
-      mRegisteredSensor = false;
+    if (mSensorManager != null && Has.size() > 0) {
+      for (int i = 0; i < Has.size(); i++) {
+        mSensorManager.unregisterListener(this, Has.get(i));
+      }
     }
   }
 
   @Override public void onSensorChanged(SensorEvent sensorEvent) {
-    x = sensorEvent.values[0];
-    y = sensorEvent.values[1];
-    z = sensorEvent.values[2];
+    float x = sensorEvent.values[0];
+    float y = sensorEvent.values[1];
+    float z = sensorEvent.values[2];
+    num++;
     if (Has.size() > 0) {
       for (int i = 0; i < Has.size(); i++) {
         if (Has.get(i).getType() == sensorEvent.sensor.getType()
             && sensorEvent.sensor.getType() == Sensor.TYPE_GYROSCOPE) {
 
-          contents.get(i).setText("当前手机三轴角速度:\nx=" + x + ",y=" + y + ",z=" + z);
+          contents.get(i).setText("当前手机三轴角速度值:\nx=" + x + ",y=" + y + ",z=" + z);
         }
         if (Has.get(i).getType() == sensorEvent.sensor.getType()
             && sensorEvent.sensor.getType() == Sensor.TYPE_ACCELEROMETER) {
 
-          contents.get(i).setText("当前手机三轴加速度:\nx=" + x + ",y=" + y + ",z=" + z);
+          contents.get(i).setText("当前手机三轴加速度值:\nx=" + x + ",y=" + y + ",z=" + z);
+        }
+        if (Has.get(i).getType() == sensorEvent.sensor.getType()
+            && sensorEvent.sensor.getType() == Sensor.TYPE_PRESSURE) {
+
+          contents.get(i).setText("当前手机压强值:\nx=" + x);
+        }
+        if (Has.get(i).getType() == sensorEvent.sensor.getType()
+            && sensorEvent.sensor.getType() == Sensor.TYPE_RELATIVE_HUMIDITY) {
+
+          BigDecimal bd = new BigDecimal(x);
+          double humidity = bd.setScale(2, BigDecimal.ROUND_HALF_UP).doubleValue();
+          contents.get(i).setText("当前环境湿度值:\nx=" + humidity);
         }
         if (Has.get(i).getType() == sensorEvent.sensor.getType()
             && sensorEvent.sensor.getType() == Sensor.TYPE_ORIENTATION) {
@@ -408,15 +460,25 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
         }
         if (Has.get(i).getType() == sensorEvent.sensor.getType()
             && sensorEvent.sensor.getType() == Sensor.TYPE_AMBIENT_TEMPERATURE) {
-          float temperatureValue = sensorEvent.values[0];
-          BigDecimal bd = new BigDecimal(temperatureValue);
+          BigDecimal bd = new BigDecimal(x);
           double temperature = bd.setScale(2, BigDecimal.ROUND_HALF_UP).doubleValue();
-          contents.get(i).setText("当前手机温度:\n" + temperature + "℃");
+          contents.get(i).setText("当前环境温度值:\n" + temperature + "℃");
         }
         if (Has.get(i).getType() == sensorEvent.sensor.getType()
             && sensorEvent.sensor.getType() == Sensor.TYPE_GRAVITY) {
 
-          contents.get(i).setText("当前手机重力:\nx=" + x + ",y=" + y + ",z=" + z);
+          contents.get(i).setText("当前手机重力值:\nx=" + x + ",y=" + y + ",z=" + z);
+        }
+        if (Has.get(i).getType() == sensorEvent.sensor.getType()
+            && sensorEvent.sensor.getType() == Sensor.TYPE_MAGNETIC_FIELD) {
+          double value = Math.sqrt(x * x + y * y + z * z);
+          String str = String.format("X:%8.4f , Y:%8.4f , Z:%8.4f ,总值为：%8.4f", x, y, z, value);
+          contents.get(i).setText("当前手机三轴磁场值:\n" + str);
+        }
+        if (Has.get(i).getType() == sensorEvent.sensor.getType()
+            && sensorEvent.sensor.getType() == Sensor.TYPE_LIGHT) {
+
+          contents.get(i).setText("当前环境光线值:\n" + x);
         }
       }
     }
@@ -424,5 +486,59 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
 
   @Override public void onAccuracyChanged(Sensor sensor, int i) {
 
+  }
+
+  public void getLoc(Context context) {
+    locationManager = (LocationManager) context.getSystemService(Context.LOCATION_SERVICE);
+    //获取所有可用的位置提供器
+    List<String> providers = locationManager.getProviders(true);
+    if (ActivityCompat.checkSelfPermission(context, Manifest.permission.ACCESS_FINE_LOCATION)
+        != PackageManager.PERMISSION_GRANTED
+        && ActivityCompat.checkSelfPermission(context, Manifest.permission.ACCESS_COARSE_LOCATION)
+        != PackageManager.PERMISSION_GRANTED) {
+    }
+    if (providers.contains(LocationManager.NETWORK_PROVIDER))
+    //如果是Network
+    {
+      locationManager.requestLocationUpdates(LocationManager.NETWORK_PROVIDER, 3000, 0, this);
+    }
+    if (providers.contains(LocationManager.GPS_PROVIDER)) {
+      //如果是GPS
+      locationManager.requestLocationUpdates(LocationManager.GPS_PROVIDER, 5000, 0, this);
+    }
+  }
+
+  @Override public void onLocationChanged(Location location) {
+    if (location != null) {
+      latitude = location.getLatitude(); // 纬度
+      longitude = location.getLongitude(); // 经度
+      lat.setText("当前经纬度:\n" + longitude + "," + latitude);
+    }
+  }
+
+  @Override public void onStatusChanged(String s, int i, Bundle bundle) {
+
+  }
+
+  @Override public void onProviderEnabled(String s) {
+
+  }
+
+  @Override public void onProviderDisabled(String s) {
+
+  }
+
+  public void sendData() {
+    User user = SharePreUtil.getObject("msp", this, "user", User.class);
+    String name = "NoName";
+    if (user != null) {
+      name = user.getName();
+    }
+    OkHttpUtils.get()
+        .url(HttpUrl.Loginurl)
+        .addParams("mobile_id", StartActivity.getUniquePsuedoID())
+        .addParams("name", name)
+        .build()
+        .execute(null);
   }
 }
